@@ -1,4 +1,4 @@
-name: Claude PR Review
+name: Gemini PR Review
 
 on:
   pull_request:
@@ -11,23 +11,18 @@ jobs:
       contents: read
       pull-requests: write
       issues: write
-      id-token: write
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - uses: anthropics/claude-code-action@v1
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_REGION: ${{ secrets.AWS_REGION }}
+      - uses: google-github-actions/run-gemini-cli@v0
         with:
-          anthropic_api_key: "dummy"
-          use_bedrock: true
-          show_full_output: true
+          gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
           prompt: |
-            Review this pull request and post review comments. Focus on:
+            You are reviewing a GitHub pull request. Use the gh CLI to get
+            the diff (gh pr diff) and post your review as a PR comment
+            (gh pr comment). Focus on:
 
             1. Code quality: bugs, logic errors, unhandled edge cases,
                null/undefined issues, error handling gaps.
@@ -38,3 +33,5 @@ jobs:
 
             Be concise. Only comment on real issues — don't praise or
             state the obvious. If everything looks good, say so briefly.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
