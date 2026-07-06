@@ -1,4 +1,3 @@
--- migrations/001_create_users.sql
 CREATE TABLE Users (
     UserID INT PRIMARY KEY,
     FirstName VARCHAR(100),
