@@ -1,0 +1,39 @@
+name: Claude PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          use_bedrock: true
+          aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws_region: ${{ secrets.AWS_REGION }}
+          show_full_output: true
+          prompt: |
+            Review this pull request and post review comments. Focus on:
+
+            1. Code quality: bugs, logic errors, unhandled edge cases,
+               null/undefined issues, error handling gaps.
+            2. Project conventions (flag any violations):
+               - Database table and column names must be lowercase snake_case
+                 (e.g. user_id, not UserID or userId)
+               - Check migration files and SQL for naming violations
+
+            Be concise. Only comment on real issues — don't praise or
+            state the obvious. If everything looks good, say so briefly.
