@@ -1,4 +1,4 @@
-name: Gemini PR Review
+name: PR Review (GitHub Models)
 
 on:
   pull_request:
@@ -7,32 +7,64 @@ on:
 jobs:
   review:
     runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 10
     permissions:
       contents: read
       pull-requests: write
       issues: write
+      models: read          # <-- this unlocks free GitHub Models
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - uses: google-github-actions/run-gemini-cli@v0
-        with:
-          gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
-          prompt: |
-            You are reviewing a GitHub pull request. Use the gh CLI to get
-            the diff (gh pr diff) and post your review as a PR comment
-            (gh pr comment). Focus on:
-
-            1. Code quality: bugs, logic errors, unhandled edge cases,
-               null/undefined issues, error handling gaps.
-            2. Project conventions (flag any violations):
-               - Database table and column names must be lowercase snake_case
-                 (e.g. user_id, not UserID or userId)
-               - Check migration files and SQL for naming violations
-
-            Be concise. Only comment on real issues — don't praise or
-            state the obvious. If everything looks good, say so briefly.
+      # Step 1: get the PR diff and the rules
+      - name: Get diff
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GEMINI_CLI_TRUST_WORKSPACE: "true"
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr diff ${{ github.event.pull_request.number }} > pr.diff
+          echo "Diff size: $(wc -l < pr.diff) lines"
+
+      # Step 2: ask the model to review it
+      - name: AI review
+        id: review
+        uses: actions/ai-inference@v1
+        with:
+          model: openai/gpt-4o
+          system-prompt: |
+            You are an automated PR reviewer. Review the provided diff
+            against the rules, plus general code quality (bugs, logic
+            errors, edge cases, error handling).
+
+            Output format:
+            - **What this PR does**: 1-2 sentences.
+            - **Risk**: Low / Medium / High, one line why.
+            - **Findings**: each on its own line with severity tag:
+              🔴 blocker, 🟡 should-fix, 🔵 nitpick. Include file and
+              line reference. Show one-line fixes in code blocks.
+            - **Rules checked**: checklist with ✅/❌.
+
+            Max 10 findings. Only real issues — no praise, no filler.
+            If clean, say "✅ No issues found." plus the checklist.
+
+            RULES:
+            - Table/column names lowercase snake_case (user_id, not UserID)
+            - No string-built SQL (injection risk)
+            - No swallowed exceptions (except: pass)
+            - No unclosed resources (use context managers)
+            - No hardcoded secrets
+            - No magic numbers, no print() debugging
+          prompt-file: pr.diff
+
+      # Step 3: post the result as a PR comment
+      - name: Post comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cat << 'EOF' > review.md
+          ## 🤖 AI Review
+          ${{ steps.review.outputs.response }}
+          EOF
+          gh pr comment ${{ github.event.pull_request.number }} --body-file review.md
